@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#B5563C">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="考点卡">
+<title>考点卡 · 复习问答</title>
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<style>
+  :root{
+    --bg:#FAF7F2; --card:#FFFFFF; --border:#E8DFD5; --ink:#3A332C; --ink2:#8A8078;
+    --accent:#C4552D; --accent-soft:#FAECE7; --amber:#854F0B; --amber-soft:#FAEEDA;
+    --blue:#185FA5; --blue-soft:#E6F1FB; --green:#3B6D11; --green-soft:#EAF3DE; --gray:#5F5E5A;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; font-size:14px; line-height:1.6;}
+  .wrap{max-width:860px; margin:0 auto; padding:16px 14px 20px; display:flex; flex-direction:column; min-height:100vh;}
+  header{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  h1{font-size:19px; font-weight:600;}
+  .ai-tag{font-size:11px; color:var(--accent); border:1px solid var(--accent); border-radius:4px; padding:1px 6px;}
+  .banner{background:var(--amber-soft); border:1px solid #EAD3A8; border-radius:10px; padding:7px 12px; font-size:11.5px; color:var(--amber); margin:8px 0 10px;}
+  .tabs{display:flex; gap:4px; margin-bottom:10px;}
+  .tab{padding:6px 13px; cursor:pointer; border:1px solid var(--border); background:#fff; font-size:13px; color:var(--ink2); border-radius:18px;}
+  .tab.on{color:#fff; background:var(--accent); border-color:var(--accent); font-weight:600;}
+  .panel{display:none; flex:1; flex-direction:column;}
+  .panel.on{display:flex;}
+  /* 对话区 */
+  #chat-scroll{flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:4px 2px 10px; min-height:40vh;}
+  .msg{max-width:88%; padding:9px 13px; border-radius:13px; font-size:13.5px; white-space:pre-wrap; word-break:break-word;}
+  .msg.user{align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px;}
+  .msg.ai{align-self:flex-start; background:var(--card); border:1px solid var(--border); border-bottom-left-radius:4px;}
+  .msg .who{font-size:11px; color:var(--ink2); margin-bottom:3px;}
+  .msg .who b{color:var(--accent); font-weight:500;}
+  .minicard{background:#FDFBF8; border:1px solid var(--border); border-radius:8px; padding:6px 10px; margin:5px 0; font-size:12.5px; cursor:pointer;}
+  .minicard:hover{border-color:var(--accent);}
+  .minicard .mc-t{font-weight:600;}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:7px;}
+  .chip{font-size:12px; padding:3px 11px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; color:var(--ink);}
+  .chip:hover{border-color:var(--accent); color:var(--accent);}
+  .chip.pri{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .eval-box{border-left:3px solid var(--accent); padding:6px 10px; background:var(--accent-soft); border-radius:0 8px 8px 0; margin-top:5px; white-space:pre-wrap;}
+  .input-bar{display:flex; gap:8px; align-items:flex-end; padding-top:8px; border-top:1px solid var(--border); background:var(--bg);}
+  .input-bar textarea{flex:1; min-height:44px; max-height:120px; border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:13.5px; font-family:inherit; resize:none; background:#fff;}
+  .input-bar textarea:focus{outline:2px solid var(--accent-soft); border-color:var(--accent);}
+  .send{height:44px; padding:0 18px; border-radius:12px; background:var(--accent); border:none; color:#fff; font-size:14px; font-weight:600; cursor:pointer;}
+  .send:disabled{opacity:.5; cursor:not-allowed;}
+  .attach-btn{width:44px; height:44px; flex:none; border-radius:12px; border:1px solid var(--border); background:#fff; color:var(--ink2); font-size:22px; line-height:1; cursor:pointer; transition:all .15s;}
+  .attach-btn:hover{border-color:var(--accent); color:var(--accent); background:var(--accent-soft);}
+  .file-chips{display:none; flex-wrap:wrap; gap:6px; padding:6px 0 0;}
+  .file-chip{display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:4px 8px; font-size:12px; color:var(--ink); max-width:100%;}
+  .file-chip .fname{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px;}
+  .file-chip .fsize{color:var(--ink2); flex:none;}
+  .file-chip .fx{cursor:pointer; color:var(--ink2); font-weight:bold; padding:0 2px;}
+  .file-chip .fx:hover{color:var(--accent);}
+  .file-chip.parsing{opacity:.6; border-style:dashed;}
+  #p-chat{position:relative;}
+  .drop-overlay{display:none; position:absolute; inset:0; z-index:20; background:rgba(196,85,45,.08); border:2px dashed var(--accent); border-radius:14px; align-items:center; justify-content:center; font-size:15px; color:var(--accent); font-weight:600; pointer-events:none; backdrop-filter:blur(1px);}
+  .drop-overlay.on{display:flex;}
+  .msg .file-line{font-size:12px; color:var(--blue); background:var(--blue-soft); border-radius:6px; padding:3px 8px; display:inline-block; margin:0 4px 4px 0;}
+  .quick{display:flex; gap:6px; flex-wrap:wrap; padding:8px 0 2px;}
+  /* 考点卡 */
+  .box{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px;}
+  .stats{display:flex; gap:12px; font-size:12px; color:var(--ink2); margin-bottom:10px; flex-wrap:wrap;}
+  .lv{display:inline-block; font-size:11px; padding:1px 8px; border-radius:10px; font-weight:600; margin-right:6px;}
+  .lv-core{background:var(--accent-soft); color:var(--accent);}
+  .lv-mid{background:var(--amber-soft); color:var(--amber);}
+  .lv-ext{background:#F1EFE8; color:var(--gray);}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:13px; margin-bottom:10px;}
+  .evidence{margin-top:8px; background:#FDFBF8; border:1px dashed var(--border); border-radius:8px; padding:8px 10px; font-size:12px; color:var(--ink2);}
+  .evidence b{color:var(--ink);}
+  .src-chip{display:inline-block; font-size:11px; padding:1px 8px; border-radius:10px; margin-right:6px;}
+  .src-rec{background:var(--blue-soft); color:var(--blue);}
+  .src-ppt{background:var(--amber-soft); color:var(--amber);}
+  .src-exam{background:var(--green-soft); color:var(--green);}
+  .fb{font-size:11px; padding:1px 8px; border-radius:10px; margin-left:6px;}
+  .fb-no{background:#FCEBEB; color:#A32D2D;}
+  .fb-idk{background:var(--amber-soft); color:var(--amber);}
+  .empty{color:var(--ink2); text-align:center; padding:30px 0; font-size:13px;}
+  /* 设置 */
+  .set-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px dashed var(--border); flex-wrap:wrap;}
+  .set-row:last-child{border-bottom:none;}
+  .set-row label{font-size:13.5px;}
+  .set-row .hint{font-size:11.5px; color:var(--ink2); width:100%;}
+  select{font-family:inherit; padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:13px;}
+  .toggle input{accent-color:var(--accent); width:17px; height:17px;}
+  .toggle{display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;}
+  button{font-family:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:#fff; color:var(--ink); padding:7px 14px; font-size:13px;}
+  button:hover{border-color:var(--accent); color:var(--accent);}
+  button.ghost{border-color:transparent; color:var(--ink2);}
+  .spinner{display:inline-block; width:13px; height:13px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-2px; margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .status{font-size:12px; color:var(--ink2); white-space:pre-wrap;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>考点卡 · 复习问答</h1>
+    <span class="ai-tag">AI 生成内容</span>
+  </header>
+  <div class="banner">所有 AI 输出均为 AI 生成内容并标注证据来源，仅供复习辅助、不替代教师权威；材料仅保存在本机浏览器；问答一律由你主动发起，AI 不主动推送。</div>
+
+  <div id="pwa-tip" style="display:none;background:var(--blue-soft);border:1px solid #C9DFF3;border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--blue);margin-bottom:10px;line-height:1.7;">
+    💡 更好用的小技巧：点浏览器右上角菜单，选择<b>「添加到主屏幕 / 添加到桌面」</b>，桌面上会出现「考点卡」图标，以后点图标就能像 App 一样全屏直接进入，不用再输网址。
+    <span id="pwa-tip-close" style="float:right;cursor:pointer;font-weight:bold;padding:0 4px;">×</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab on" data-t="chat">① 对话</button>
+    <button class="tab" data-t="cards">② 考点卡</button>
+    <button class="tab" data-t="set">③ 设置</button>
+  </div>
+
+  <!-- ① 对话 -->
+  <section class="panel on" id="p-chat">
+    <div id="chat-scroll"></div>
+    <div class="quick">
+      <button class="chip" data-q="sample">试试示例材料</button>
+      <button class="chip" data-q="gen">生成考点卡</button>
+      <button class="chip" data-q="quiz">开始一轮复习</button>
+      <button class="chip" data-q="show">我的考点卡</button>
+    </div>
+    <div class="file-chips" id="file-chips"></div>
+    <div class="input-bar">
+      <button class="attach-btn" id="btn-attach" title="选择文件（录音 mp3/wav/m4a、txt、docx、pptx、pdf 等）">＋</button>
+      <input type="file" id="file-input" multiple hidden
+        accept=".txt,.md,.markdown,.csv,.srt,.vtt,.lrc,.log,.json,.docx,.pptx,.pdf,.mp3,.wav,.m4a,.aac,.flac,.ogg,.oga,.opus,.webm">
+      <textarea id="chat-input" placeholder="粘贴文本、点 ＋ 传文件（录音/PPT/试卷/PDF 都能读）；也可以说「开始复习」…"></textarea>
+      <button class="send" id="btn-send">发送</button>
+    </div>
+    <div class="drop-overlay" id="drop-overlay">松开即可添加文件</div>
+  </section>
+
+  <!-- ② 考点卡 -->
+  <section class="panel" id="p-cards">
+    <div class="stats" id="card-stats"></div>
+    <div id="card-list" style="flex:1"></div>
+  </section>
+
+  <!-- ③ 设置 -->
+  <section class="panel" id="p-set">
+    <div class="box">
+      <h3 style="font-size:14px; font-weight:600; margin-bottom:4px">复习节奏</h3>
+      <div class="set-row">
+        <label>提醒时间窗（记录偏好，原型不主动推送）</label>
+        <select id="s-window">
+          <option>晚间 19:00–22:00</option><option>午后 12:00–14:00</option><option>清晨 06:30–08:00</option>
+        </select>
+      </div>
+      <div class="set-row">
+        <label>复习频率</label>
+        <select id="s-freq">
+          <option>每天一次</option><option>隔天一次</option><option>考试周加密</option><option>仅手动开始</option>
+        </select>
+      </div>
+      <div class="set-row">
+        <label class="toggle"><input type="checkbox" id="s-paused"> 暂停复习提醒</label>
+      </div>
+      <div class="set-row">
+        <label>起始难度阶段</label>
+        <select id="s-stage">
+          <option value="1">1 · 基础回忆</option><option value="2">2 · 理解应用</option><option value="3">3 · 综合/逻辑关联</option>
+        </select>
+        <span class="hint">问答从你选的阶段开始，之后自动递进：答对升阶段，答错回退。</span>
+      </div>
+      <div class="set-row">
+        <label class="toggle"><input type="checkbox" id="s-auto"> 粘贴长材料时自动生成考点卡</label>
+        <span class="hint">关闭后，粘贴材料需要你手动点「生成考点卡」。</span>
+      </div>
+    </div>
+    <div class="box">
+      <h3 style="font-size:14px; font-weight:600; margin-bottom:6px">数据</h3>
+      <div class="set-row" style="border:none; padding:4px 0">
+        <div style="display:flex; gap:8px">
+          <button id="btn-export">导出记录（JSON）</button>
+          <button class="ghost" id="btn-reset">清除本机全部数据</button>
+        </div>
+      </div>
+      <div class="status" id="set-status"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ===== 云服务客户端（publicConfig 来自云服务开通结果） ===== */
+const publicConfig = {
+  endpoint: "https://kaodian-review.app.workbuddy.host",
+  publishableKey: "wbpk_B4alH6y5dhU1g9dZJvrN7r_s0jgr3EqM5cDtccSsJ0Z4ZOPgYejGNIE"
+};
+const cloud = WorkBuddyCloud.createWorkBuddyCloud({ endpoint: publicConfig.endpoint, publishableKey: publicConfig.publishableKey });
+
+/* ===== 状态 ===== */
+const KEY = "kd_state_v2";
+const DEF = { chat:[], cards:[], materials:"", quiz:{ level:{}, current:null, round:0 }, settings:{ window:0, freq:0, paused:false, stage:1, auto:true } };
+let S = load();
+function load(){ try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.cards !== undefined ? Object.assign(JSON.parse(JSON.stringify(DEF)), s) : JSON.parse(JSON.stringify(DEF)); } catch(e){ return JSON.parse(JSON.stringify(DEF)); } }
+function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ===== Tabs ===== */
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
+  document.querySelectorAll(".panel").forEach(p => p.classList.remove("on"));
+  $("p-" + t.dataset.t).classList.add("on");
+  if (t.dataset.t === "cards") renderCards();
+});
+
+/* ===== LLM ===== */
+/* 主通道：DeepSeek API 直连（快）；兜底：WorkBuddy 云服务 */
+const DS_API = "https://api.deepseek.com/chat/completions";
+const DS_KEY = "sk-15ed8d0fe6cb4362a4599759d6376d11";
+let modelId = null;
+async function ensureModel(){
+  if (modelId) return modelId;
+  const models = await cloud.llm.models.list();
+  const enabled = models.filter(x => x.disabled !== true);
+  if (!enabled.length) throw new Error("当前没有可用模型，请稍后再试。");
+  const fast = enabled.find(x => /flash/i.test(x.id)) || enabled[0];
+  modelId = fast.id;
+  return modelId;
+}
+async function callCloud(messages){
+  const model = await ensureModel();
+  let out = "";
+  for await (const chunk of cloud.llm.chat.completions.create({ model, messages, stream: true, temperature: 0.3 })) {
+    const d = chunk.choices?.[0]?.delta;
+    if (d && d.content) out += d.content;
+  }
+  return out;
+}
+async function callDeepSeek(messages){
+  const res = await fetch(DS_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + DS_KEY },
+    body: JSON.stringify({ model: "deepseek-chat", messages, stream: true, temperature: 0.3 })
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error("DeepSeek HTTP " + res.status + (t ? "：" + t.slice(0, 150) : ""));
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", out = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop();
+    for (const line of lines) {
+      const s = line.trim();
+      if (!s.startsWith("data:")) continue;
+      const payload = s.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      try {
+        const j = JSON.parse(payload);
+        const d = j.choices && j.choices[0] && j.choices[0].delta;
+        if (d && d.content) out += d.content;
+      } catch (_) {}
+    }
+  }
+  if (!out.trim()) throw new Error("DeepSeek 返回为空");
+  return out;
+}
+async function callLLM(messages){
+  try {
+    return await callDeepSeek(messages);
+  } catch (e) {
+    console.warn("DeepSeek 调用失败，回退云服务通道：", e);
+    return await callCloud(messages);
+  }
+}
+function parseJSON(raw){
+  const s = raw.trim().replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  return JSON.parse(a >= 0 && b > a ? s.slice(a, b + 1) : s);
+}
+function llmErrMsg(e){
+  const code = e && e.error && e.error.code ? e.error.code : "";
+  if (code.startsWith("quota_")) return "模型额度不足或被限流，请稍后再试。";
+  if (code.startsWith("auth_")) return "云服务鉴权失败，请重新打开本页。";
+  if (code.startsWith("request_")) return "请求参数有误，请重试。";
+  return "模型调用失败，请稍后重试。";
+}
+
+/* ===== 对话渲染 ===== */
+const LV = {"核心":"lv-core","次要":"lv-mid","拓展":"lv-ext"};
+function pushMsg(m){ S.chat.push(m); if (S.chat.length > 80) S.chat.splice(0, S.chat.length - 80); save(); renderChat(); }
+function renderChat(){
+  const c = $("chat-scroll");
+  c.innerHTML = S.chat.map((m, i) => {
+    if (m.role === "user") return `<div class="msg user">${(m.files||[]).map(f => `<span class="file-line">📎 ${esc(f)}</span>`).join("")}${m.text ? esc(m.text) : ""}</div>`;
+    let body = "";
+    if (m.type === "status") body = `<span class="spinner"></span>${esc(m.text)}`;
+    else if (m.type === "cards") body = `<div class="who"><b>AI 生成</b> · 考点卡</div>${esc(m.summary)}${m.ids.map(id => { const cd = S.cards.find(x => x.id === id); return cd ? `<div class="minicard" onclick="goCards()"><span class="lv ${LV[cd.level]||"lv-ext"}">${esc(cd.level)}</span><span class="mc-t">${esc(cd.title)}</span> · ${esc(cd.locator)}</div>` : ""; }).join("")}<div class="chips"><button class="chip" onclick="goCards()">查看全部 ${m.ids.length} 张</button><button class="chip pri" onclick="startRound()">开始一轮复习</button></div>`;
+    else if (m.type === "question") body = `<div class="who"><b>AI 出题</b> · ${esc(m.cardTitle)} · 第 ${m.stage} 阶段</div>${esc(m.question)}<div class="chips"><button class="chip" onclick="skipQuestion()">跳过这题</button><button class="chip" onclick="stopRound()">暂停本轮</button></div>`;
+    else if (m.type === "eval") body = `<div class="who"><b>AI 生成</b> · 点评</div><div class="eval-box"><b>${esc(m.verdictText)}</b>\n${esc(m.explanation)}${m.followup ? "\n\n追问：" + esc(m.followup) : ""}</div><div class="chips"><button class="chip pri" onclick="nextQuestion()">下一题</button><button class="chip" onclick="markIdk('${m.cardId}')">这道我没掌握</button><button class="chip" onclick="stopRound()">暂停本轮</button></div>`;
+    else body = `<div class="who"><b>AI 生成</b></div>${esc(m.text)}`;
+    return `<div class="msg ai" data-i="${i}">${body}</div>`;
+  }).join("");
+  c.scrollTop = c.scrollHeight;
+}
+window.goCards = () => document.querySelector('.tab[data-t="cards"]').click();
+
+/* ===== 文件导入（＋ 选择 / 拖拽 / 粘贴） ===== */
+let pendingFiles = [];   // {file, name, size}
+const MAX_FILE_MB = 50, MAX_FILES = 5;
+const AUDIO_EXT = ["mp3","wav","m4a","aac","flac","ogg","oga","opus","webm"];
+const MEDIA_EXT = ["png","jpg","jpeg","gif","webp","bmp","mp4","mov","avi","mkv","wmv","flv","zip","rar","7z","exe"];
+
+function fmtSize(n){ return n > 1024*1024 ? (n/1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n/1024)) + " KB"; }
+function renderFileChips(){
+  const box = $("file-chips");
+  if (!pendingFiles.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+  box.style.display = "flex";
+  box.innerHTML = pendingFiles.map((p, i) =>
+    `<span class="file-chip"><span class="fname" title="${esc(p.name)}">📎 ${esc(p.name)}</span><span class="fsize">${fmtSize(p.size)}</span><span class="fx" data-i="${i}">×</span></span>`).join("");
+  box.querySelectorAll(".fx").forEach(x => x.onclick = () => { pendingFiles.splice(+x.dataset.i, 1); renderFileChips(); });
+}
+function clearPendingFiles(){ pendingFiles = []; renderFileChips(); }
+function addFiles(list){
+  for (const f of list) {
+    if (pendingFiles.length >= MAX_FILES) { alert(`一次最多添加 ${MAX_FILES} 个文件。`); break; }
+    if (f.size > MAX_FILE_MB * 1048576) { alert(`「${f.name}」超过 ${MAX_FILE_MB} MB，原型阶段暂不支持，请拆分后发送。`); continue; }
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    if (MEDIA_EXT.includes(ext)) { alert(`「${f.name}」是图片/视频/压缩包，无法直接读取内容。`); continue; }
+    pendingFiles.push({ file: f, name: f.name, size: f.size });
+  }
+  renderFileChips();
+}
+
+/* ===== 录音转写（浏览器本地 Whisper，语音不上传） ===== */
+let whisperPipe = null, whisperLoading = null;
+async function getWhisper(onStatus){
+  if (whisperPipe) return whisperPipe;
+  if (whisperLoading) { whisperLoading.catch(() => { whisperLoading = null; }); return whisperLoading; }
+  whisperLoading = (async () => {
+    onStatus("首次使用正在加载语音识别模型（约 80MB，只下载一次，之后有缓存）…");
+    const mod = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.1");
+    mod.env.allowLocalModels = false;
+    const lines = [
+      [location.origin + "/hf", "（本站线路）"],
+      ["https://hf-mirror.com", "（国内镜像线路）"],
+      ["https://huggingface.co", "（国际线路）"]
+    ];
+    let pipe = null, lastErr = null;
+    for (const [host, tag] of lines) {
+      try {
+        mod.env.remoteHost = host;
+        onStatus(`正在下载语音识别模型${tag}…`);
+        pipe = await mod.pipeline("automatic-speech-recognition", "Xenova/whisper-base", {
+          dtype: "q8",
+          progress_callback: e => {
+            if (e.status === "progress" && e.progress != null) onStatus(`正在下载语音识别模型${tag}：${Math.round(e.progress)}%（约 80MB，只下载一次）…`);
+          }
+        });
+        break;
+      } catch (e) { lastErr = e; }
+    }
+    if (!pipe) throw new Error(lastErr ? lastErr.message : "全部线路均失败");
+    whisperPipe = pipe;
+    return whisperPipe;
+  })();
+  try { return await whisperLoading; }
+  catch (e) { whisperLoading = null; whisperPipe = null; throw new Error("语音识别模型加载失败（需联网下载一次）：" + e.message); }
+}
+function fmtTs(sec){
+  if (sec == null) return "00:00";
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  return (h ? h + ":" : "") + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
+}
+async function decodeToMono16k(file){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) throw new Error("当前浏览器不支持音频解码，请换用较新的浏览器。");
+  const ctx = new AC();
+  try {
+    const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+    const len = Math.max(1, Math.ceil(buf.duration * 16000));
+    const off = new OfflineAudioContext(1, len, 16000);
+    const src = off.createBufferSource();
+    src.buffer = buf; src.connect(off.destination); src.start();
+    return (await off.startRendering()).getChannelData(0);
+  } finally { ctx.close && ctx.close(); }
+}
+async function transcribeAudio(file, onStatus){
+  const pipe = await getWhisper(onStatus);
+  const pcm = await decodeToMono16k(file);
+  const dur = Math.round(pcm.length / 16000);
+  onStatus(`正在转写「${file.name}」（${fmtTs(dur)}），预计需要 1-5 分钟，请勿关闭页面…`);
+  const out = await pipe(pcm, { chunk_length_s: 30, stride_length_s: 5, return_timestamps: true });
+  let text = "";
+  if (out.chunks && out.chunks.length) {
+    text = out.chunks.map(c => `[${fmtTs(c.timestamp && c.timestamp[0])}] ${(c.text || "").trim()}`).filter(l => l.slice(11).trim()).join("\n");
+  } else if (out.text) { text = out.text.trim(); }
+  return { text: text || "（未识别到清晰语音内容）", duration: dur };
+}
+async function parseFile(f, onStatus){
+  const name = f.name, ext = (name.split(".").pop() || "").toLowerCase();
+  if (AUDIO_EXT.includes(ext)) {
+    const r = await transcribeAudio(f, onStatus || (() => {}));
+    return `【录音转写】时长 ${fmtTs(r.duration)}\n` + r.text;
+  }
+  if (ext === "ppt") throw new Error("旧版 .ppt 格式无法在浏览器解析，请用 PowerPoint/WPS 另存为 .pptx 后再发。");
+  if (ext === "docx") {
+    if (!window.mammoth) throw new Error("docx 解析组件未加载，请刷新页面重试。");
+    const r = await mammoth.extractRawText({ arrayBuffer: await f.arrayBuffer() });
+    return r.value;
+  }
+  if (ext === "pptx") {
+    if (!window.JSZip) throw new Error("pptx 解析组件未加载，请刷新页面重试。");
+    const zip = await JSZip.loadAsync(await f.arrayBuffer());
+    const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+      .sort((a,b) => parseInt(a.match(/\d+/)[0]) - parseInt(b.match(/\d+/)[0]));
+    if (!slides.length) throw new Error("不是有效的 pptx 文件。");
+    let out = "";
+    for (let i = 0; i < slides.length; i++) {
+      const xml = await zip.files[slides[i]].async("string");
+      const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(m => m[1]).join(" ");
+      if (texts.trim()) out += `\n【PPT 第 ${i+1} 页】${texts.trim()}`;
+    }
+    return out.trim() || "（该 PPT 未提取到文字内容，可能是图片型课件，请把要点复制粘贴发给我）";
+  }
+  if (ext === "pdf") {
+    if (!window.pdfjsLib) throw new Error("PDF 解析组件未加载，请刷新页面重试。");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+    let out = "";
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const tc = await (await pdf.getPage(p)).getTextContent();
+      const line = tc.items.map(it => it.str).join(" ").trim();
+      if (line) out += `\n【PDF 第 ${p} 页】${line}`;
+    }
+    return out.trim() || "（该 PDF 未提取到文字内容，可能是扫描件，请把内容复制粘贴发给我）";
+  }
+  return await f.text();
+}
+async function sendFiles(files, note){
+  const m = pushStatus(`正在读取 ${files.length} 个文件…`);
+  try {
+    const parts = [];
+    const extOf = n => (n.split(".").pop() || "").toLowerCase();
+    for (const p of files) {
+      const isAudio = AUDIO_EXT.includes(extOf(p.name));
+      let tick = null;
+      if (isAudio) {
+        const start = Date.now();
+        tick = setInterval(() => replaceMsg(m, { role:"ai", type:"status", text:`正在转写「${p.name}」… 已用 ${Math.round((Date.now()-start)/1000)} 秒，长录音可能需要几分钟，请勿关闭页面` }), 3000);
+      }
+      try { parts.push(`【文件：${p.name}】\n` + await parseFile(p.file, t => replaceMsg(m, { role:"ai", type:"status", text:`「${p.name}」${t}` }))); }
+      catch(e) { parts.push(`【文件：${p.name}】\n（读取失败：${e.message}）`); }
+      finally { if (tick) clearInterval(tick); }
+    }
+    let combined = parts.join("\n\n");
+    if (note) combined = note + "\n\n" + combined;
+    const names = files.map(f => f.name);
+    replaceMsg(m, { role:"user", files: names, text: note ? (note.length > 300 ? note.slice(0,300) + "…" : note) : "" });
+    S.materials = (S.materials ? S.materials + "\n\n" : "") + combined;
+    save();
+    const valid = parts.filter(s => !s.includes("（读取失败")).length;
+    if (!valid) { pushMsg({ role:"ai", text:"文件都没能读取成功。提示：支持 txt / md / srt / docx / pptx / pdf / 录音（mp3·wav·m4a 等）。" }); return; }
+    const audioN = files.filter(f => AUDIO_EXT.includes(extOf(f.name))).length;
+    if (S.settings.auto) { genCards(combined); return; }
+    pushMsg({ role:"ai", text:`已收下 ${valid} 个文件的内容并合并到材料库${audioN ? `（其中 ${audioN} 个录音已在本地完成转写，带时间戳可回链）` : ""}。点上方「生成考点卡」我就开始多源比对提取考点；也可以继续补充其他材料。` });
+  } catch(e) {
+    replaceMsg(m, { role:"ai", text: "文件处理出错了：" + e.message });
+  }
+}
+
+/* ＋ 按钮 / 拖拽 / 粘贴 */
+$("btn-attach").onclick = () => $("file-input").click();
+$("file-input").addEventListener("change", e => { addFiles([...e.target.files]); e.target.value = ""; });
+const chatPanel = $("p-chat"), dropOv = $("drop-overlay");
+let dragDepth = 0;
+chatPanel.addEventListener("dragenter", e => { e.preventDefault(); if (++dragDepth === 1) dropOv.classList.add("on"); });
+chatPanel.addEventListener("dragover", e => e.preventDefault());
+chatPanel.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; dropOv.classList.remove("on"); } });
+chatPanel.addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0; dropOv.classList.remove("on");
+  if (e.dataTransfer && e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]);
+});
+$("chat-input").addEventListener("paste", e => {
+  if (e.clipboardData && e.clipboardData.files.length) { e.preventDefault(); addFiles([...e.clipboardData.files]); }
+});
+
+/* ===== 发送与路由 ===== */
+$("btn-send").onclick = onSend;
+$("chat-input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } });
+document.querySelectorAll(".quick .chip").forEach(b => b.onclick = () => {
+  const q = b.dataset.q;
+  if (q === "sample") { $("chat-input").value = SAMPLE; onSend(); }
+  else if (q === "gen") { if (!S.materials) { pushMsg({role:"ai", text:"还没有材料。把录音转写、PPT 或试卷文本直接粘贴发给我，我来提取考点。"}); } else genCards(S.materials, "基于你之前提供的材料重新生成考点卡。"); }
+  else if (q === "quiz") startRound();
+  else if (q === "show") showCardsMsg();
+});
+
+const SAMPLE = `【录音转写】[00:05:48] 中序遍历对二叉搜索树会得到有序序列，这个结论期末必考，我强调了三遍了。
+[00:09:15] 层序遍历要用队列实现，栈是用不上的，别搞混了。
+[00:14:32] 递归和非递归写法都要会手写，去年卷子就考了非递归中序。
+[00:26:40] 哈夫曼树的构造步骤和带权路径长度计算，几乎每年必出大题。
+【PPT】5.3 二叉树的遍历：前序（根左右）、中序（左根右）、后序（左右根）、层序（队列实现）。对二叉搜索树中序遍历得到递增有序序列。5.4 哈夫曼树：WPL 最小的二叉树。
+【试卷】四、（10分）先序 ABDECF 与中序 DBEAFC，画树并写后序。五、（12分）权值 {2,3,5,7,11} 构造哈夫曼树并计算 WPL。`;
+
+function looksLikeMaterial(t){
+  if (t.length > 150) return true;
+  if (/\[\d{1,2}:\d{2}/.test(t)) return true;
+  return /(录音|转写|PPT|课件|教材|试卷|真题|笔记)/.test(t);
+}
+
+async function onSend(){
+  const input = $("chat-input");
+  const text = input.value.trim();
+  const files = pendingFiles.slice();
+  if (!text && !files.length) return;
+  input.value = "";
+  if (files.length) { clearPendingFiles(); await sendFiles(files, text); return; }
+  pushMsg({ role:"user", text: text.length > 400 ? text.slice(0, 400) + "…（已完整保存）" : text });
+  if (looksLikeMaterial(text)) {
+    S.materials = (S.materials ? S.materials + "\n\n" : "") + text;
+    save();
+    if (S.settings.auto) { genCards(text); return; }
+    pushMsg({ role:"ai", text:"材料已收下。点上方「生成考点卡」，我就开始多源比对提取考点。" });
+    return;
+  }
+  if (S.quiz.current && !S.quiz.current.answered) { evaluateAnswer(text); return; }
+  const t = text.toLowerCase();
+  if (/(开始复习|出题|考考我|考我|提问|来一题|复习一下)/.test(t)) { startRound(); return; }
+  if (/(考点卡|我的考点|查看考点|看看考点)/.test(t)) { showCardsMsg(); return; }
+  if (/^设置/.test(t.trim())) { document.querySelector('.tab[data-t="set"]').click(); pushMsg({ role:"ai", text:"已为你打开设置页，可以调整时间窗、频率、起始难度等。" }); return; }
+  await agentChat(text);
+}
+
+async function agentChat(text){
+  const m = pushStatus("思考中…");
+  try {
+    const sys = "你是大学生的复习助手「考点卡」，对话风格自然友好、简洁不啰嗦。能力：1) 用户可以点输入框旁的 ＋ 传文件（录音/PPT/试卷/PDF），或直接粘贴文本；2) 用户想复习时引导他点「开始一轮复习」或说「出题」；3) 可以回答与复习方法、知识点相关的问题，但不编造未提供的材料内容。仅输出 JSON：{\"reply\":\"给用户的回复\"}，不要其他文字。";
+    const raw = await callLLM([{ role:"system", content: sys }, { role:"user", content: text }]);
+    const data = parseJSON(raw);
+    replaceMsg(m, { role:"ai", text: data.reply || "我在的，随时把材料发给我，或点「开始一轮复习」。" });
+  } catch(e) { replaceMsg(m, { role:"ai", text: llmErrMsg(e) }); }
+}
+function pushStatus(text){ const m = { role:"ai", type:"status", text }; S.chat.push(m); save(); renderChat(); return S.chat.length - 1; }
+function replaceMsg(i, m){ S.chat[i] = m; save(); renderChat(); }
+
+/* ===== 生成考点卡 ===== */
+async function genCards(matText, note){
+  const m = pushStatus("正在多源比对生成考点卡，约需 15-60 秒…");
+  try {
+    const sys = "你是课程考点识别助手。任务：把课堂材料交叉比对，输出结构化考点清单。规则：1) 每条考点必须给出可追溯证据：quote 为材料原文片段（逐字摘录，不编造），source 取 录音/PPT教材/试卷笔记 之一，locator 为定位（如录音时间戳 [00:05:48]、PPT 章节、试卷题号），无法定位就不要输出该考点；2) level：核心（老师明确强调必考/试卷出现）/次要（系统讲解的重点知识）/拓展（提及但明确说不考或仅延伸）；3) 优先依据老师口头强调与试卷证据；4) 只依据所给材料，不要编造；5) 输出 5-8 条，按重要性排序。仅输出一个 JSON 对象，以 { 开头、} 结尾，不要 markdown 代码块：{\"cards\":[{\"level\":\"核心|次要|拓展\",\"title\":\"短标题\",\"content\":\"考点说明（1-2句）\",\"source\":\"录音|PPT教材|试卷笔记\",\"quote\":\"...\",\"locator\":\"...\"}]}";
+    const raw = await callLLM([{ role:"system", content: sys }, { role:"user", content: (note ? note + "\n\n" : "") + matText }]);
+    const data = parseJSON(raw);
+    if (!data.cards || !data.cards.length) throw new Error("empty");
+    const old = {}; S.cards.forEach(c => old[c.title] = c);
+    S.cards = data.cards.map((c, i) => ({ id:"c" + Date.now() + "_" + i, level:c.level, title:c.title, content:c.content, source:c.source, quote:c.quote, locator:c.locator, notKey: old[c.title] ? old[c.title].notKey : false, idk: old[c.title] ? old[c.title].idk : false }));
+    S.quiz.level = {}; S.quiz.current = null;
+    save();
+    const n = lv => S.cards.filter(c => c.level === lv).length;
+    replaceMsg(m, { role:"ai", type:"cards", summary:`已生成 ${S.cards.length} 张考点卡：核心 ${n("核心")} · 次要 ${n("次要")} · 拓展 ${n("拓展")}。每张卡都带证据回链，可在「考点卡」页核对或一键纠正。`, ids: S.cards.map(c => c.id) });
+  } catch(e) {
+    replaceMsg(m, { role:"ai", text: e.message === "empty" ? "模型没有返回考点，请再发一次材料或重试。" : llmErrMsg(e) + "（可直接再发一次材料重试）" });
+  }
+}
+function showCardsMsg(){
+  if (!S.cards.length) { pushMsg({ role:"ai", text:"还没有考点卡。把课程材料粘贴发给我（录音转写 / PPT / 试卷都行），我来提取。" }); return; }
+  pushMsg({ role:"ai", type:"cards", summary:`你目前共有 ${S.cards.length} 张考点卡：`, ids: S.cards.map(c => c.id) });
+}
+
+/* ===== 复习问答 ===== */
+function pickCard(){
+  const pool = S.cards.filter(c => !c.notKey);
+  if (!pool.length) return null;
+  pool.sort((a,b) => (b.idk?1:0) - (a.idk?1:0) || (S.quiz.level[a.id]||0) - (S.quiz.level[b.id]||0));
+  return pool[0];
+}
+async function startRound(){
+  if (!S.cards.length) { pushMsg({ role:"ai", text:"还没有考点卡，先给我发点课程材料吧（录音转写、PPT、试卷文本都可以）。" }); return; }
+  S.quiz.round++; save();
+  nextQuestion();
+}
+async function nextQuestion(){
+  const card = pickCard();
+  if (!card) { pushMsg({ role:"ai", text:"所有考点都被你标记为「不是重点」了，去考点卡页调整后再来。" }); return; }
+  const m = pushStatus("出题中…");
+  const lvNow = Math.min(3, Math.max(Number(S.settings.stage) || 1, (S.quiz.level[card.id] || 0) + 1));
+  try {
+    const sys = "你是复习问答出题助手。依据给定的单个考点出 1 道简答题，要求：1) 难度阶段 1=基础回忆、2=理解应用、3=综合与逻辑关联（阶段 3 优先出逻辑关联题，例如该知识点与其他知识点的联系或反例辨析）；2) 能用自然语言回答，不出选择题；3) 语气自然，像学长提问，不要客套；4) 仅输出一个 JSON 对象，以 { 开头、} 结尾，不要 markdown：{\"question\":\"题目文本\",\"stage\":1}，stage 必须等于要求的难度阶段。";
+    const user = `考点：${card.title}\n说明：${card.content}\n要求难度阶段：${lvNow}\n该考点此前进度：已通过 ${(S.quiz.level[card.id]||0)} 阶段`;
+    const raw = await callLLM([{ role:"system", content: sys }, { role:"user", content: user }]);
+    const q = parseJSON(raw);
+    S.quiz.current = { cardId: card.id, cardTitle: card.title, question: q.question, stage: q.stage || lvNow, answered: false };
+    save();
+    replaceMsg(m, { role:"ai", type:"question", cardTitle: card.title, stage: S.quiz.current.stage, question: q.question });
+  } catch(e) { replaceMsg(m, { role:"ai", text: llmErrMsg(e) }); }
+}
+async function evaluateAnswer(ans){
+  const cur = S.quiz.current; if (!cur) return;
+  cur.answered = true; save();
+  const card = S.cards.find(c => c.id === cur.cardId);
+  const m = pushStatus("点评中…");
+  try {
+    const sys = "你是复习问答点评助手。学生回答了你出的题，请：1) verdict：correct（基本正确）/ partial（部分正确）/ wrong（不会或错误）；2) 用 2-4 句话讲解正确答案，结合考点内容，语气鼓励但不夸张；3) 如该考点与其他知识点有逻辑关联，给一句 followup 追问（没有就空字符串）。仅输出一个 JSON 对象，以 { 开头、} 结尾，不要 markdown：{\"verdict\":\"correct|partial|wrong\",\"explanation\":\"...\",\"followup\":\"...\"}";
+    const user = `考点：${card.title}\n考点说明：${card.content}\n题目：${cur.question}\n学生回答：${ans}`;
+    const raw = await callLLM([{ role:"system", content: sys }, { role:"user", content: user }]);
+    const ev = parseJSON(raw);
+    if (ev.verdict === "correct") S.quiz.level[cur.cardId] = Math.min(3, (S.quiz.level[cur.cardId] || 0) + 1);
+    if (ev.verdict === "wrong") S.quiz.level[cur.cardId] = Math.max(0, (S.quiz.level[cur.cardId] || 1) - 1);
+    save();
+    const vText = { correct:"回答正确", partial:"部分正确", wrong:"还需要再看看" }[ev.verdict] || "已点评";
+    replaceMsg(m, { role:"ai", type:"eval", cardId: cur.cardId, verdictText: vText, explanation: ev.explanation, followup: ev.followup });
+  } catch(e) { replaceMsg(m, { role:"ai", text: llmErrMsg(e) + "（可重发你的答案再试）" }); S.quiz.current.answered = false; save(); }
+}
+window.skipQuestion = () => { if (S.quiz.current) S.quiz.current.answered = true; save(); pushMsg({ role:"ai", text:"已跳过。想继续就点「下一题」，或随时暂停。" }); };
+window.stopRound = () => { if (S.quiz.current) S.quiz.current.answered = true; save(); pushMsg({ role:"ai", text:"本轮已暂停，进度保存在本机。想复习时说「开始复习」即可。" }); };
+window.markIdk = id => { const c = S.cards.find(x => x.id === id); if (c) { c.idk = true; save(); } pushMsg({ role:"ai", text:"已标记「我不会」，之后复习会优先出这道考点。" }); };
+
+/* ===== 考点卡页 ===== */
+const SRC = {"录音":"src-rec","PPT教材":"src-ppt","试卷笔记":"src-exam"};
+function renderCards(){
+  const list = $("card-list");
+  if (!S.cards.length) { list.innerHTML = '<div class="empty">还没有考点卡。回到「对话」页粘贴课程材料。</div>'; $("card-stats").innerHTML = ""; return; }
+  const n = lv => S.cards.filter(c => c.level === lv).length;
+  $("card-stats").innerHTML = `共 ${S.cards.length} 张 · 核心 ${n("核心")} · 次要 ${n("次要")} · 拓展 ${n("拓展")} · 你纠正 ${S.cards.filter(c=>c.notKey||c.idk).length} 条`;
+  list.innerHTML = S.cards.map(c => `
+    <div class="card">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px"><span class="lv ${LV[c.level]||"lv-ext"}">${esc(c.level)}</span><b>${esc(c.title)}</b>
+        ${c.notKey ? '<span class="fb fb-no">已标记：不是重点</span>' : ""}${c.idk ? '<span class="fb fb-idk">已标记：我不会</span>' : ""}</div>
+      <div>${esc(c.content)}</div>
+      <div class="evidence">证据回链 · <span class="src-chip ${SRC[c.source]||"src-rec"}">${esc(c.source)}</span> 定位：<b>${esc(c.locator)}</b><br>原文：「${esc(c.quote)}」</div>
+      <div class="chips"><button class="chip" onclick="markCard('${c.id}','notKey')">不是重点</button><button class="chip" onclick="markCard('${c.id}','idk')">我不会</button></div>
+    </div>`).join("");
+}
+window.markCard = (id, key) => { const c = S.cards.find(x => x.id === id); if (c) { c[key] = !c[key]; save(); renderCards(); } };
+
+/* ===== 设置 ===== */
+function bindSet(id, key, cast){
+  const el = $(id);
+  if (cast === "check") el.checked = !!S.settings[key]; else if (cast === "num") el.value = S.settings[key]; else el.selectedIndex = S.settings[key] || 0;
+  el.onchange = () => { S.settings[key] = cast === "check" ? el.checked : (cast === "num" ? Number(el.value) : el.selectedIndex); save(); };
+}
+bindSet("s-window", "window"); bindSet("s-freq", "freq");
+bindSet("s-paused", "paused", "check"); bindSet("s-stage", "stage", "num"); bindSet("s-auto", "auto", "check");
+$("btn-export").onclick = () => {
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "复习记录.json"; a.click();
+  $("set-status").textContent = "已导出到下载目录。";
+};
+$("btn-reset").onclick = () => {
+  if (!confirm("将清除本机全部材料、考点卡和对话记录，不可恢复。确定？")) return;
+  if (!confirm("再次确认清除？")) return;
+  localStorage.removeItem(KEY); S = load(); renderChat(); $("set-status").textContent = "已清除全部数据。";
+};
+
+/* ===== 初始化 ===== */
+if (!S.chat.length) {
+  S.chat.push({ role:"ai", text:"你好！我是你的复习助手。用法很简单：\n\n1. 点输入框旁的 ＋ 传文件，或直接粘贴文本——录音（mp3/wav/m4a，自动本地转写）、PPT、试卷、PDF、笔记都行\n2. 我会做多源比对，生成带证据回链的考点卡（老师强调的标「核心」，录音考点带时间戳可回放定位）\n3. 说「开始复习」或「考考我」，我就按难度递进向你提问\n4. 随时告诉我「不是重点」「这道我不会」，我会修正判断\n\n小提示：第一次传录音会自动下载一个本地语音识别模型（约 80MB），之后就有缓存了；语音识别在你的设备上完成，录音内容不会上传。\n\n先从发一段材料开始吧。" });
+  save();
+}
+renderChat();
+ensureModel().catch(() => {});
+
+/* ===== PWA 安装提示（已安装/已关闭则不再显示） ===== */
+(function(){
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  if (standalone) return;
+  if (localStorage.getItem("kd_pwa_tip_closed") === "1") return;
+  const tip = $("pwa-tip");
+  tip.style.display = "block";
+  $("pwa-tip-close").onclick = () => { tip.style.display = "none"; localStorage.setItem("kd_pwa_tip_closed", "1"); };
+})();
+</script>
+</body>
+</html>
